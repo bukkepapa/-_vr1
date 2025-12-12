@@ -18,27 +18,29 @@ def load_inventory_file(file):
         file_ext = file.name.split('.')[-1].lower()
         
         if file_ext == 'csv':
-            # CSV形式で読み込み（ヘッダーなし、B列=1(保管場所), I列=8(品目コード), N列=13(在庫数)）
+            # CSV形式で読み込み（ヘッダーなし、B列=1(保管場所), I列=8(品目コード), K列=10(入数), N列=13(在庫数), W列=22(入庫予定)）
             # WindowsのCSVはCP932(Shift_JIS拡張)が多い
-            df = pd.read_csv(file, header=None, usecols=[1, 8, 13], encoding='cp932')
-            # 列名を設定
-            df.columns = ['保管場所', '商品コード', '倉庫在庫数']
+            df = pd.read_csv(file, header=None, usecols=[1, 8, 10, 13, 22], encoding='cp932')
+            # 列名を設定 (pd.read_csvは列インデックス順に格納するため、1, 8, 10, 13, 22の順)
+            df.columns = ['保管場所', '商品コード', '入数', '倉庫在庫数', '入庫予定']
             
             # 保管場所が 'A309001' のデータのみ抽出
             df = df[df['保管場所'] == 'A309001']
             
         elif file_ext in ['xlsx', 'xls']:
-            # Excel形式の場合も同様の構造（B, I, N列）と仮定、ただしヘッダーがあるか不明なため
-            # ユーザー指示のCSV構造に合わせる形で実装（既存のExcelロジックはコメントアウトまたは置換）
-            # 今回はCSVが添付されているためCSVロジックをExcelにも適用（ヘッダーなしと仮定するか、ヘッダーありと仮定するかリスクだが一旦ヘッダーなしで読む）
-            df = pd.read_excel(file, header=None, usecols=[1, 8, 13])
-            df.columns = ['保管場所', '商品コード', '倉庫在庫数']
+            # Excel形式の場合も同様の構造（B, I, K, N, W列）と仮定
+            df = pd.read_excel(file, header=None, usecols=[1, 8, 10, 13, 22])
+            df.columns = ['保管場所', '商品コード', '入数', '倉庫在庫数', '入庫予定']
             df = df[df['保管場所'] == 'A309001']
         else:
             raise ValueError(f"サポートされていないファイル形式です: {file_ext}")
         
-        # 倉庫在庫数を整数型に変換（変換失敗時は0）
-        df['倉庫在庫数'] = pd.to_numeric(df['倉庫在庫数'], errors='coerce').fillna(0).astype(int)
+        # 数値項目を整数型に変換（変換失敗時は0）
+        for col in ['倉庫在庫数', '入数', '入庫予定']:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+
+        # 倉庫在庫数に（入庫予定 × 入数）を加算
+        df['倉庫在庫数'] = df['倉庫在庫数'] + (df['入庫予定'] * df['入数'])
         
         # 商品コードの欠損値を除外
         df = df.dropna(subset=['商品コード'])
