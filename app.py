@@ -66,17 +66,42 @@ def load_order_file(file):
     Returns:
         DataFrame: 顧客コード、顧客名、商品コード、発注数量を含むDataFrame
     """
+    # 対応するエンコーディングリスト（優先順）
+    # UTF-8 with BOM → UTF-8 → CP932(Shift-JIS拡張)
+    encodings = ['utf-8-sig', 'utf-8', 'cp932']
+    
+    df = None
+    last_error = None
+    
+    for encoding in encodings:
+        try:
+            # ファイルポインタを先頭に戻す
+            file.seek(0)
+            
+            # タブ区切りで読み込み
+            # 必要な列のみ指定: 14=顧客コード, 15=顧客名, 97=商品コード, 106=商品名（漢字）, 108=商品名（カナ）, 118=発注数量
+            df = pd.read_csv(
+                file,
+                encoding=encoding,
+                sep='\t',
+                header=0,
+                usecols=[14, 15, 97, 106, 108, 118]
+            )
+            
+            # 読み込み成功
+            break
+            
+        except UnicodeDecodeError as e:
+            last_error = e
+            continue
+        except Exception as e:
+            # エンコーディング以外のエラーは即座に報告
+            raise Exception(f"受注ファイルの読み込みエラー: {str(e)}")
+    
+    if df is None:
+        raise Exception(f"受注ファイルの文字コードエラー: 対応しているエンコーディング（UTF-8, UTF-8 with BOM, Shift-JIS）での読み込みに失敗しました。ファイルのエンコーディングを確認してください。")
+    
     try:
-        # Shift-JIS、タブ区切りで読み込み
-        # 必要な列のみ指定: 14=顧客コード, 15=顧客名, 97=商品コード, 106=商品名（漢字）, 108=商品名（カナ）, 118=発注数量
-        df = pd.read_csv(
-            file,
-            encoding='shift_jis',
-            sep='\t',
-            header=0,
-            usecols=[14, 15, 97, 106, 108, 118]
-        )
-        
         # 列名を設定
         df.columns = ['顧客コード', '顧客名', '商品コード', '商品名漢字', '商品名カナ', '発注数量']
         
@@ -95,8 +120,6 @@ def load_order_file(file):
         
         return df
     
-    except UnicodeDecodeError:
-        raise Exception("受注ファイルの文字コードエラー: Shift-JISでの読み込みに失敗しました。ファイルのエンコーディングを確認してください。")
     except Exception as e:
         raise Exception(f"受注ファイルの読み込みエラー: {str(e)}")
 
@@ -414,7 +437,7 @@ def main():
         - E列: 倉庫在庫数
         
         **② 受注ファイル (.txt)**
-        - 文字コード: Shift-JIS
+        - 文字コード: UTF-8 / UTF-8 with BOM / Shift-JIS（自動判別）
         - 区切り文字: タブ
         - 列インデックス:
           - 14: 顧客コード
